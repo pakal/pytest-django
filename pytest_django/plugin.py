@@ -6,6 +6,7 @@ test database and provides some useful text fixtures.
 
 import contextlib
 import inspect
+import site
 from functools import reduce
 import os
 import sys
@@ -139,6 +140,16 @@ def pytest_addoption(parser):
         type="bool",
         default=False,
     )
+    parser.addini(
+        "python_paths_early", type="linelist",
+        help="newline-separated directories to add to PYTHONPATH via sys.path.insert(0, path),"
+             "after resolving user prefix and relative paths (from ini file directory)",
+        default=[])
+    parser.addini(
+        "site_dirs_early", type="linelist",
+        help="newline-separated directories to add to PYTHONPATH via site.addsitedir(path),"
+             "after resolving user prefix and relative paths (from ini file directory)",
+        default=[])
 
 
 PROJECT_FOUND = (
@@ -269,6 +280,30 @@ def pytest_load_initial_conftests(early_config, parser, args):
     if options.version or options.help:
         return
 
+    def _normalize_path(path):
+        """
+        Expand user and resolve relative paths using rootdir
+        """
+        path = str(path)
+        path = os.path.expanduser(path)
+        if not os.path.isabs(path):
+            path = os.path.join(str(early_config.rootdir), path)
+        return os.path.normpath(path)
+
+    python_paths_early = tuple(_normalize_path(path)
+                               for path in early_config.getini("python_paths_early"))
+    for path in reversed(python_paths_early):
+        sys.path.insert(0, path)
+    early_config._ppe_report_header = ("Early extra python paths: %s" % str(python_paths_early)
+                                       if python_paths_early else None)
+
+    site_dirs_early = tuple(_normalize_path(path)
+                            for path in early_config.getini("site_dirs_early"))
+    for path in site_dirs_early:
+        site.addsitedir(path)
+    early_config._sde_report_header = ("Early extra site dirs: %s" % str(site_dirs_early)
+                                       if site_dirs_early else None)
+
     django_find_project = _get_boolean_value(
         early_config.getini("django_find_project"), "django_find_project"
     )
@@ -338,8 +373,11 @@ def pytest_load_initial_conftests(early_config, parser, args):
 
 
 def pytest_report_header(config):
-    if config._dsm_report_header:
-        return [config._dsm_report_header]
+    result = [entry for entry in [config._dsm_report_header,
+                                  config._ppe_report_header,
+                                  config._sde_report_header]
+              if entry]
+    return result
 
 
 @pytest.mark.trylast

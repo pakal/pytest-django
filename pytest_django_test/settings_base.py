@@ -1,4 +1,5 @@
 import os
+import random
 
 import django
 
@@ -16,7 +17,7 @@ SECRET_KEY = "foobar"
 
 # Used to construct unique test database names to allow detox to run multiple
 # versions at the same time
-db_suffix = "_%s" % os.getuid()
+db_suffix = "_%s" % (os.getuid() if hasattr(os, "getuid") else random.randint(0, 10000))
 
 MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
